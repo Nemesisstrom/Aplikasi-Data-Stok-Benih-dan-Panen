@@ -11,6 +11,7 @@ return new class extends Migration {
             $table->foreignId('satker_id')->constrained('satkers')->onDelete('cascade');
             $table->foreignId('varietas_id')->nullable()->constrained('varietas')->onDelete('set null');
             $table->enum('komoditas', ['padi', 'jagung']);
+            $table->index(['satker_id', 'komoditas']);
             $table->enum('kelas_benih', ['FS', 'SS']); // FS: Foundation Seed, SS: Stock Seed
             $table->enum('status_stok', [
                 'target',
@@ -20,6 +21,7 @@ return new class extends Migration {
                 'prosesing',
                 'persiapan_panen'
             ]);
+            $table->index('status_stok');
             $table->decimal('volume_ton', 12, 3)->default(0);
             $table->string('estimasi_panen')->nullable(); // String untuk format fleksibel seperti "Minggu ke 4 Desember"
             $table->date('tanggal_laporan'); // Tanggal cut-off laporan (contoh: 2024-12-12)

@@ -23,33 +23,27 @@ class StokBenihController extends Controller implements HasMiddleware
     {
         $user = auth()->user();
 
-        // Optimasi: Gunakan select field tertentu untuk mengurangi beban memori
         $query = StokBenih::with([
             'satker:id,kode_satker,nama_satker',
             'varietas:id,nama_varietas,komoditas'
         ]);
 
-        // Filter Hak Akses Berdasarkan Role
         if ($user->hasRole('petugas_provinsi')) {
             $query->where('satker_id', $user->satker_id);
         } elseif ($request->filled('satker_id')) {
             $query->where('satker_id', $request->satker_id);
         }
 
-        // Filter Komoditas
         if ($request->filled('komoditas')) {
             $query->where('komoditas', $request->komoditas);
         }
 
-        // Filter Status Stok
         if ($request->filled('status_stok')) {
             $query->where('status_stok', $request->status_stok);
         }
 
-        // Gunakan pagination dengan chunking optimal (15 data per halaman)
         $stokList = $query->latest()->paginate(15)->withQueryString();
 
-        // Cache data referensi yang jarang berubah untuk mengurangi query berulang
         $satkers = cache()->remember('satkers_all', 3600, fn() => Satker::all());
         $varietas = cache()->remember('varietas_all', 3600, fn() => Varietas::all());
 

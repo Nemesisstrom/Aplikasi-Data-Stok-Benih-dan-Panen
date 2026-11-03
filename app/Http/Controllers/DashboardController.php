@@ -21,7 +21,6 @@ class DashboardController extends Controller
             $panenQuery->where('satker_id', $user->satker_id);
         }
 
-        // Agregat Statistik Utama
         $padiTersedia = (clone $stokQuery)->where('komoditas', 'padi')->where('status_stok', 'tersedia_tersertifikasi')->sum('volume_ton');
         $padiProses = (clone $stokQuery)->where('komoditas', 'padi')->whereIn('status_stok', ['persiapan_panen', 'prosesing', 'proses_sertifikasi'])->sum('volume_ton');
         $jagungTersedia = (clone $stokQuery)->where('komoditas', 'jagung')->where('status_stok', 'tersedia_tersertifikasi')->sum('volume_ton');
@@ -33,7 +32,6 @@ class DashboardController extends Controller
         $totalPanenPadi = (clone $panenQuery)->where('komoditas', 'padi')->sum('jumlah_panen_ton');
         $totalPanenJagung = (clone $panenQuery)->where('komoditas', 'jagung')->sum('jumlah_panen_ton');
 
-        // Line Chart Bulanan
         $panenBulanan = (clone $panenQuery)
             ->select(DB::raw("MONTH(tanggal_panen) as bulan"), DB::raw("SUM(jumlah_panen_ton) as total_panen"))
             ->where('komoditas', 'padi')
@@ -48,7 +46,6 @@ class DashboardController extends Controller
             $dataPanen[] = round($panenBulanan[$i] ?? 0, 2);
         }
 
-        // Donut Chart Kelas Benih
         $kelasStok = (clone $stokQuery)
             ->select('kelas_benih', DB::raw('SUM(volume_ton) as total_volume'))
             ->groupBy('kelas_benih')

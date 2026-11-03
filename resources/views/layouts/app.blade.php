@@ -17,6 +17,9 @@
         .card-stat { border: none; border-radius: 10px; transition: transform 0.2s; }
         .card-stat:hover { transform: translateY(-3px); }
     </style>
+    <!-- Script Global atau Stack untuk halaman spesifik -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    @stack('scripts')
 </head>
 <body>
     <div class="container-fluid">
