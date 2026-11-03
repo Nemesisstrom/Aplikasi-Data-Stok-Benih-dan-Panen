@@ -3,38 +3,41 @@
 namespace App\Exports;
 
 use App\Models\CatatanPanen;
-use Maatwebsite\Excel\Concerns\FromQuery;
+use Illuminate\Support\Enumerable;
+use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
-use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithStyles;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
 
-class CatatanPanenExport implements FromQuery, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
+class CatatanPanenExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles
 {
-    protected $satkerId;
+    protected ?int $satkerId;
+    protected ?string $komoditas;
 
-    public function __construct($satkerId = null)
+    public function __construct(?int $satkerId = null, ?string $komoditas = null)
     {
         $this->satkerId = $satkerId;
+        $this->komoditas = $komoditas;
     }
 
     /**
-     * Query data catatan panen
+     * Mengambil koleksi data catatan panen berdasarkan filter
      */
-    public function query()
+    public function collection(): Enumerable
     {
-        $query = CatatanPanen::with(['satker', 'varietas']);
+        $query = CatatanPanen::with(['satker', 'varietas', 'user']);
 
-        // Jika dipanggil oleh Petugas Daerah, filter sesuai satker_id
         if ($this->satkerId) {
             $query->where('satker_id', $this->satkerId);
         }
 
-        return $query->latest('tanggal_panen');
+        if ($this->komoditas) {
+            $query->where('komoditas', $this->komoditas);
+        }
+
+        return $query->latest('tanggal_panen')->get();
     }
 
     /**
@@ -43,84 +46,50 @@ class CatatanPanenExport implements FromQuery, WithHeadings, WithMapping, WithSt
     public function headings(): array
     {
         return [
-            'NO',
-            'KODE SATKER',
-            'NAMA BPSIP / SATKER',
-            'TANGGAL PANEN',
-            'KOMODITAS',
-            'VARIETAS',
-            'LUAS LAHAN (HA)',
-            'HASIL PANEN (TON)',
-            'LOKASI LAHAN',
-            'CATATAN',
+            'ID',
+            'Kode Satker',
+            'Nama Satker BPSIP',
+            'Komoditas',
+            'Nama Varietas',
+            'Luas Lahan (Ha)',
+            'Jumlah Panen (Ton)',
+            'Tanggal Panen',
+            'Lokasi Lahan',
+            'Petugas Input',
+            'Catatan',
         ];
     }
 
     /**
-     * Mapping Baris Data Excel
+     * Mapping Data per Baris
      */
     public function map($panen): array
     {
-        static $no = 0;
-        $no++;
-
         return [
-            $no,
+            $panen->id,
             $panen->satker->kode_satker ?? '-',
             $panen->satker->nama_satker ?? '-',
-            $panen->tanggal_panen ? date('d/m/Y', strtotime($panen->tanggal_panen)) : '-',
-            strtoupper($panen->komoditas),
+            ucfirst($panen->komoditas),
             $panen->varietas->nama_varietas ?? '-',
-            number_format($panen->luas_lahan_ha, 2, ',', '.'),
-            number_format($panen->jumlah_panen_ton, 2, ',', '.'),
+            $panen->luas_lahan_ha ?? $panen->luas_lahan_hektar ?? 0,
+            $panen->jumlah_panen_ton,
+            \Carbon\Carbon::parse($panen->tanggal_panen)->format('d/m/Y'),
             $panen->lokasi_lahan ?? '-',
+            $panen->user->name ?? '-',
             $panen->catatan ?? '-',
         ];
     }
 
     /**
-     * Styling Header & Border Excel
+     * Styling Spreadsheet dengan return type : ?array (Kompatibel PHP 8.4)
      */
-    public function styles(Worksheet $sheet)
+    public function styles(Worksheet $sheet): ?array
     {
-        // Style Header (Baris 1) - Warna Hijau BBPSIP
-        $sheet->getStyle('A1:J1')->applyFromArray([
-            'font' => [
-                'bold'  => true,
-                'color' => ['argb' => 'FFFFFF'],
-                'size'  => 11,
+        return [
+            1 => [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '198754']]
             ],
-            'fill' => [
-                'fillType'   => Fill::FILL_SOLID,
-                'startColor' => ['argb' => '1B5E20'],
-            ],
-            'alignment' => [
-                'horizontal' => Alignment::HORIZONTAL_CENTER,
-                'vertical'   => Alignment::VERTICAL_CENTER,
-            ],
-        ]);
-
-        // Border & Alignment untuk seluruh sel data
-        $highestRow = $sheet->getHighestRow();
-        if ($highestRow > 1) {
-            $sheet->getStyle("A1:J{$highestRow}")->applyFromArray([
-                'borders' => [
-                    'allBorders' => [
-                        'borderStyle' => Border::BORDER_THIN,
-                        'color'       => ['argb' => 'CCCCCC'],
-                    ],
-                ],
-            ]);
-
-            // Alignment Tengah untuk No, Kode, Tanggal, Komoditas
-            $sheet->getStyle("A2:A{$highestRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle("B2:B{$highestRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle("D2:E{$highestRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-
-            // Alignment Kanan untuk Luas Lahan (Ha) dan Hasil Panen (Ton)
-            $sheet->getStyle("G2:H{$highestRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-        }
-
-        return [];
+        ];
     }
 }

@@ -13,15 +13,18 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class StokBenihExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles
 {
-    protected $satkerId;
-    protected $komoditas;
+    protected ?int $satkerId;
+    protected ?string $komoditas;
 
-    public function __construct($satkerId = null, $komoditas = null)
+    public function __construct(?int $satkerId = null, ?string $komoditas = null)
     {
         $this->satkerId = $satkerId;
         $this->komoditas = $komoditas;
     }
 
+    /**
+     * Mengambil koleksi data stok benih berdasarkan filter
+     */
     public function collection(): Enumerable
     {
         $query = StokBenih::with(['satker', 'varietas']);
@@ -37,6 +40,9 @@ class StokBenihExport implements FromCollection, WithHeadings, WithMapping, Shou
         return $query->latest()->get();
     }
 
+    /**
+     * Header Kolom Excel
+     */
     public function headings(): array
     {
         return [
@@ -54,6 +60,9 @@ class StokBenihExport implements FromCollection, WithHeadings, WithMapping, Shou
         ];
     }
 
+    /**
+     * Mapping Data per Baris
+     */
     public function map($stok): array
     {
         return [
@@ -72,7 +81,7 @@ class StokBenihExport implements FromCollection, WithHeadings, WithMapping, Shou
     }
 
     /**
-     * Tambahkan return type : ?array pada method styles()
+     * Styling Spreadsheet dengan return type : ?array (Kompatibel PHP 8.4)
      */
     public function styles(Worksheet $sheet): ?array
     {

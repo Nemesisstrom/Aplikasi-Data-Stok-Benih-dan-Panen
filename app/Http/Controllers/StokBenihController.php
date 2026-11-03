@@ -11,9 +11,6 @@ use Illuminate\Routing\Controllers\Middleware;
 
 class StokBenihController extends Controller implements HasMiddleware
 {
-    /**
-     * Middleware Definition untuk Laravel 11/13
-     */
     public static function middleware(): array
     {
         return [
@@ -22,15 +19,17 @@ class StokBenihController extends Controller implements HasMiddleware
         ];
     }
 
-    /**
-     * Tampilkan daftar stok benih (Admin Pusat melihat seluruh Satker)
-     */
     public function index(Request $request)
     {
         $user = auth()->user();
-        $query = StokBenih::with(['satker', 'varietas']);
 
-        // Jika petugas daerah, kunci data hanya untuk Satker miliknya
+        // Optimasi: Gunakan select field tertentu untuk mengurangi beban memori
+        $query = StokBenih::with([
+            'satker:id,kode_satker,nama_satker',
+            'varietas:id,nama_varietas,komoditas'
+        ]);
+
+        // Filter Hak Akses Berdasarkan Role
         if ($user->hasRole('petugas_provinsi')) {
             $query->where('satker_id', $user->satker_id);
         } elseif ($request->filled('satker_id')) {
@@ -47,33 +46,30 @@ class StokBenihController extends Controller implements HasMiddleware
             $query->where('status_stok', $request->status_stok);
         }
 
-        $stokList = $query->latest()->paginate(15);
-        $satkers = Satker::all();
-        $varietas = Varietas::all();
+        // Gunakan pagination dengan chunking optimal (15 data per halaman)
+        $stokList = $query->latest()->paginate(15)->withQueryString();
+
+        // Cache data referensi yang jarang berubah untuk mengurangi query berulang
+        $satkers = cache()->remember('satkers_all', 3600, fn() => Satker::all());
+        $varietas = cache()->remember('varietas_all', 3600, fn() => Varietas::all());
 
         return view('stok_benih.index', compact('stokList', 'satkers', 'varietas'));
     }
 
-    /**
-     * Form Tambah Stok
-     */
     public function create()
     {
-        $satkers = Satker::all();
+        $satkers = cache()->remember('satkers_all', 3600, fn() => Satker::all());
         $varietasPadi = Varietas::where('komoditas', 'padi')->get();
         $varietasJagung = Varietas::where('komoditas', 'jagung')->get();
 
         return view('stok_benih.create', compact('satkers', 'varietasPadi', 'varietasJagung'));
     }
 
-    /**
-     * Simpan Data Stok Baru
-     */
     public function store(Request $request)
     {
         $user = auth()->user();
 
-        $rules = [
+        $validated = $request->validate([
             'komoditas' => 'required|in:padi,jagung',
             'varietas_id' => 'required|exists:varietas,id',
             'kelas_benih' => 'required|in:BS,FS,SS,ES',
@@ -82,13 +78,9 @@ class StokBenihController extends Controller implements HasMiddleware
             'nomor_sertifikat' => 'nullable|string|max:100',
             'tanggal_panen_proses' => 'nullable|date',
             'catatan' => 'nullable|string',
-        ];
+            'satker_id' => $user->hasRole('admin_pusat') ? 'required|exists:satkers,id' : 'nullable',
+        ]);
 
-        if ($user->hasRole('admin_pusat')) {
-            $rules['satker_id'] = 'required|exists:satkers,id';
-        }
-
-        $validated = $request->validate($rules);
         $validated['satker_id'] = $user->hasRole('petugas_provinsi') ? $user->satker_id : $validated['satker_id'];
 
         StokBenih::create($validated);
@@ -96,14 +88,11 @@ class StokBenihController extends Controller implements HasMiddleware
         return redirect()->route('stok-benih.index')->with('success', 'Data stok benih berhasil ditambahkan.');
     }
 
-    /**
-     * Form Edit Data Stok
-     */
     public function edit(StokBenih $stokBenih)
     {
         $user = auth()->user();
         if ($user->hasRole('petugas_provinsi') && $stokBenih->satker_id !== $user->satker_id) {
-            abort(403, 'Anda tidak memiliki hak akses untuk mengubah data Satker lain.');
+            abort(403, 'Akses ditolak.');
         }
 
         $satkers = Satker::all();
@@ -112,17 +101,14 @@ class StokBenihController extends Controller implements HasMiddleware
         return view('stok_benih.edit', compact('stokBenih', 'satkers', 'varietas'));
     }
 
-    /**
-     * Update Data Stok
-     */
     public function update(Request $request, StokBenih $stokBenih)
     {
         $user = auth()->user();
         if ($user->hasRole('petugas_provinsi') && $stokBenih->satker_id !== $user->satker_id) {
-            abort(403, 'Anda tidak memiliki hak akses untuk mengubah data Satker lain.');
+            abort(403, 'Akses ditolak.');
         }
 
-        $rules = [
+        $validated = $request->validate([
             'komoditas' => 'required|in:padi,jagung',
             'varietas_id' => 'required|exists:varietas,id',
             'kelas_benih' => 'required|in:BS,FS,SS,ES',
@@ -131,38 +117,31 @@ class StokBenihController extends Controller implements HasMiddleware
             'nomor_sertifikat' => 'nullable|string|max:100',
             'tanggal_panen_proses' => 'nullable|date',
             'catatan' => 'nullable|string',
-        ];
+            'satker_id' => $user->hasRole('admin_pusat') ? 'required|exists:satkers,id' : 'nullable',
+        ]);
 
-        if ($user->hasRole('admin_pusat')) {
-            $rules['satker_id'] = 'required|exists:satkers,id';
+        if ($user->hasRole('petugas_provinsi')) {
+            unset($validated['satker_id']);
         }
 
-        $validated = $request->validate($rules);
         $stokBenih->update($validated);
 
         return redirect()->route('stok-benih.index')->with('success', 'Data stok benih berhasil diperbarui.');
     }
 
-    /**
-     * Hapus Data Stok
-     */
     public function destroy(StokBenih $stokBenih)
     {
         $user = auth()->user();
         if ($user->hasRole('petugas_provinsi') && $stokBenih->satker_id !== $user->satker_id) {
-            abort(403, 'Anda tidak memiliki hak akses untuk menghapus data Satker lain.');
+            abort(403, 'Akses ditolak.');
         }
 
         $stokBenih->delete();
         return redirect()->route('stok-benih.index')->with('success', 'Data stok benih berhasil dihapus.');
     }
 
-    /**
-     * API AJAX Dynamic Dropdown Varietas
-     */
     public function getVarietasByKomoditas($komoditas)
     {
-        $data = Varietas::where('komoditas', $komoditas)->get();
-        return response()->json($data);
+        return response()->json(Varietas::where('komoditas', $komoditas)->select('id', 'nama_varietas')->get());
     }
 }
