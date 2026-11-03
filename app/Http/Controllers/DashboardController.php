@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\StokBenih;
 use App\Models\CatatanPanen;
 use App\Models\Satker;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class DashboardController extends Controller
 {
@@ -61,9 +63,13 @@ class DashboardController extends Controller
 
         $rekapSatker = null;
         if ($user->hasAnyRole(['admin_pusat', 'pimpinan'])) {
-            $rekapSatker = Satker::withSum(['stokBenihs as stok_padi_tersedia' => fn($q) => $q->where('komoditas', 'padi')->where('status_stok', 'tersedia_tersertifikasi')], 'volume_ton')
-                ->withSum(['stokBenihs as stok_jagung_tersedia' => fn($q) => $q->where('komoditas', 'jagung')->where('status_stok', 'tersedia_tersertifikasi')], 'volume_ton')
-                ->get();
+            $rekapSatker = Satker::withSum([
+                'stokBenihs as stok_padi_tersedia' => fn($q) => $q->where('komoditas', 'padi')->where('status_stok', 'tersedia_tersertifikasi')
+            ], 'volume_ton')
+            ->withSum([
+                'stokBenihs as stok_jagung_tersedia' => fn($q) => $q->where('komoditas', 'jagung')->where('status_stok', 'tersedia_tersertifikasi')
+            ], 'volume_ton')
+            ->get();
         }
 
         return view('dashboard.index', compact(
@@ -71,5 +77,49 @@ class DashboardController extends Controller
             'padiPotensiPanen', 'jagungPotensiPanen', 'totalPanenPadi', 'totalPanenJagung',
             'labelsBulan', 'dataPanen', 'dataKelas', 'rekapSatker'
         ));
+    }
+
+    public function exportPdf(Request $request)
+    {
+        $user = auth()->user();
+
+        $stokQuery = StokBenih::query();
+        $panenQuery = CatatanPanen::query();
+
+        if ($user->hasRole('petugas_provinsi') || $user->satker_id) {
+            $stokQuery->where('satker_id', $user->satker_id);
+            $panenQuery->where('satker_id', $user->satker_id);
+        }
+
+        $padiTersedia = (clone $stokQuery)->where('komoditas', 'padi')->where('status_stok', 'tersedia_tersertifikasi')->sum('volume_ton');
+        $padiProses = (clone $stokQuery)->where('komoditas', 'padi')->whereIn('status_stok', ['persiapan_panen', 'prosesing', 'proses_sertifikasi'])->sum('volume_ton');
+        $jagungTersedia = (clone $stokQuery)->where('komoditas', 'jagung')->where('status_stok', 'tersedia_tersertifikasi')->sum('volume_ton');
+        $jagungProses = (clone $stokQuery)->where('komoditas', 'jagung')->whereIn('status_stok', ['persiapan_panen', 'prosesing', 'proses_sertifikasi'])->sum('volume_ton');
+
+        $totalPanenPadi = (clone $panenQuery)->where('komoditas', 'padi')->sum('jumlah_panen_ton');
+        $totalPanenJagung = (clone $panenQuery)->where('komoditas', 'jagung')->sum('jumlah_panen_ton');
+
+        $rekapSatker = null;
+        if ($user->hasAnyRole(['admin_pusat', 'pimpinan'])) {
+            $rekapSatker = Satker::withSum([
+                'stokBenihs as stok_padi_tersedia' => fn($q) => $q->where('komoditas', 'padi')->where('status_stok', 'tersedia_tersertifikasi')
+            ], 'volume_ton')
+            ->withSum([
+                'stokBenihs as stok_jagung_tersedia' => fn($q) => $q->where('komoditas', 'jagung')->where('status_stok', 'tersedia_tersertifikasi')
+            ], 'volume_ton')
+            ->get();
+        }
+
+        // Definisikan variabel penampung grafik agar tidak Undefined variable
+        $lineChartBase64 = null;
+        $donutChartBase64 = null;
+
+        $pdf = Pdf::loadView('reports.dashboard_pdf', compact(
+            'padiTersedia', 'padiProses', 'jagungTersedia', 'jagungProses',
+            'totalPanenPadi', 'totalPanenJagung', 'rekapSatker',
+            'lineChartBase64', 'donutChartBase64'
+        ))->setPaper('a4', 'portrait');
+
+        return $pdf->download('Laporan_Ringkasan_Dashboard_' . date('Ymd_His') . '.pdf');
     }
 }

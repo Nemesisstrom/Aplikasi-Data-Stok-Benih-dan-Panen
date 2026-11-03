@@ -43,7 +43,7 @@
         </div>
     </div>
 
-    <!-- Grafik Visualisasi Chart.js -->
+    <!-- Grafik Visualisasi Chart.js dengan Data Attributes -->
     <div class="row">
         <div class="col-xl-12">
             <div class="card mb-4">
@@ -52,7 +52,10 @@
                     Grafik Total Panen Padi Bulanan Tahun {{ date('Y') }}
                 </div>
                 <div class="card-body">
-                    <canvas id="panenChart" width="100%" height="30"></canvas>
+                    <canvas id="panenChart"
+                            data-labels='{!! json_encode($labelsBulan) !!}'
+                            data-values='{!! json_encode($dataPanen) !!}'
+                            width="100%" height="30"></canvas>
                 </div>
             </div>
         </div>
@@ -60,17 +63,25 @@
 </div>
 
 @push('scripts')
+<!-- CDN Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        const ctx = document.getElementById('panenChart').getContext('2d');
-        const panenChart = new Chart(ctx, {
+        const canvasElement = document.getElementById('panenChart');
+        if (!canvasElement) return;
+
+        // Ambil data dari atribut HTML, sehingga bersih dari error linter editor
+        const labelsBulan = JSON.parse(canvasElement.getAttribute('data-labels'));
+        const dataPanen = JSON.parse(canvasElement.getAttribute('data-values'));
+
+        const ctx = canvasElement.getContext('2d');
+        window.panenChartInstance = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: @json($labelsBulan),
+                labels: labelsBulan,
                 datasets: [{
                     label: 'Total Panen (Ton)',
-                    data: @json($dataPanen),
+                    data: dataPanen,
                     backgroundColor: 'rgba(25, 135, 84, 0.2)',
                     borderColor: 'rgba(25, 135, 84, 1)',
                     borderWidth: 2,
